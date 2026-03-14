@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,41 +11,50 @@ from app.schemas import (
     ContentListResponse,
     ContentResponse,
     ContentStatusUpdate,
+    IngestResponse,
 )
-from app.services.analyzer import analyze_content
+from app.services.processor import analyze_single
 
 router = APIRouter(prefix="/api/v1/content", tags=["Content"])
 
 
-@router.post("", response_model=ContentResponse, status_code=201)
-async def ingest_content(payload: ContentCreate, db: AsyncSession = Depends(get_db)):
-    """Accept content from the crawler, analyze it with Groq, and store results."""
+@router.post("", response_model=IngestResponse, status_code=201)
+async def ingest_content(
+    payload: ContentCreate,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """Accept content from the crawler, store immediately, and trigger background analysis."""
     existing = await db.execute(
         select(Content).where(Content.twitter_id == payload.twitter_id)
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=409,
-            detail=f"Content with twitter_id '{payload.twitter_id}' already exists",
+        return IngestResponse(
+            status="error",
+            message=f"Content with twitter_id '{payload.twitter_id}' already exists",
+            id=None,
+            twitter_id=payload.twitter_id,
         )
-
-    analysis, raw_response = await analyze_content(payload.content_text, db)
 
     record = Content(
         twitter_id=payload.twitter_id,
         content_text=payload.content_text,
-        age_category=analysis.age_category,
-        content_type=analysis.content_type,
-        harmful_subcategories=analysis.harmful_subcategories,
-        labels=analysis.model_dump(),
-        raw_analysis=raw_response,
+        analysis_status="pending",
         is_processed=False,
         processing_history=[],
     )
     db.add(record)
     await db.commit()
     await db.refresh(record)
-    return record
+
+    background_tasks.add_task(analyze_single, record.id)
+
+    return IngestResponse(
+        status="success",
+        message="Ingested successfully",
+        id=record.id,
+        twitter_id=record.twitter_id,
+    )
 
 
 @router.get("", response_model=ContentListResponse)

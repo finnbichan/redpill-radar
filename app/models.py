@@ -27,6 +27,7 @@ class Content(Base):
     labels: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     raw_analysis: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    analysis_status: Mapped[str] = mapped_column(String(20), default="pending")
     is_processed: Mapped[bool] = mapped_column(Boolean, default=False)
     review_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     processing_history: Mapped[list | None] = mapped_column(JSON, default=list)

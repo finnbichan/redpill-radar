@@ -43,6 +43,7 @@ class ContentResponse(BaseModel):
     harmful_subcategories: list[str] | None = None
     labels: dict | None = None
     raw_analysis: dict | None = None
+    analysis_status: str = "pending"
     is_processed: bool
     review_comment: str | None = None
     processing_history: list[dict] | None = None
@@ -57,6 +58,13 @@ class ContentListResponse(BaseModel):
     total: int
     page: int
     limit: int
+
+
+class IngestResponse(BaseModel):
+    status: str = Field(..., description="'success' or 'error'")
+    message: str = Field(..., description="Human-readable result message")
+    id: str | None = Field(None, description="Internal UUID (null on error)")
+    twitter_id: str = Field(..., description="Echo back the twitter_id")
 
 
 # ── Categories ───────────────────────────────────────────────────────────────
